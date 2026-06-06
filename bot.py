@@ -114,19 +114,36 @@ def on_mention(event: dict, say: object, ack: object) -> None:
 
 
 @app.event("message")
-def on_thread_reply(event: dict, ack: object) -> None:
+def on_message(event: dict, ack: object) -> None:
     ack()
-    thread_ts = event.get("thread_ts")
-    if not thread_ts or event.get("bot_id") or thread_ts not in thread_sessions:
+    if event.get("bot_id"):
         return
 
-    channel = event["channel"]
     text = event.get("text", "")
-    session_id = thread_sessions[thread_ts]
+    bot_id = AGENT_CONFIG.get("id") or os.environ.get("SLACK_BOT_ID", "")
+    bot_mention = f"<@{os.environ['SLACK_BOT_ID'].split(':')[0]}>" if "SLACK_BOT_ID" in os.environ else f"<@{os.environ.get('SLACK_BOT_ID', '')}>"
 
-    threading.Thread(
-        target=continue_session, args=(session_id, channel, thread_ts, text), daemon=True
-    ).start()
+    channel = event["channel"]
+    thread_ts = event.get("thread_ts")
+
+    # Case 1: Reply in existing thread session
+    if thread_ts and thread_ts in thread_sessions:
+        session_id = thread_sessions[thread_ts]
+        threading.Thread(
+            target=continue_session, args=(session_id, channel, thread_ts, text), daemon=True
+        ).start()
+        return
+
+    # Case 2: New message mentioning the bot (either in thread or as new message)
+    if f"<@{os.environ.get('SLACK_BOT_ID')}>" in text or "@Nyle Helper" in text or "<@B0ABX2CETBN>" in text:
+        question = text.split(">", 1)[-1].strip() if ">" in text else text.strip()
+        if not question:
+            return
+        thread_ts = thread_ts or event["ts"]
+        logging.info(f"Message mention: '{question}'")
+        threading.Thread(
+            target=start_session, args=(channel, thread_ts, question), daemon=True
+        ).start()
 
 
 if __name__ == "__main__":

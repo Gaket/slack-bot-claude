@@ -1,4 +1,4 @@
 anthropic>=0.91.0
 slack_bolt>=1.18.0
 python-dotenv>=1.0.0
-markdown-to-mrkdwn>=1.1.0
+markdown-to-mrkdwn>=0.3.0

@@ -1,3 +1,4 @@
+import logging
 import os
 import threading
 
@@ -8,6 +9,7 @@ from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
 load_dotenv()
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 
 client = Anthropic(api_key=os.environ["ANTHROPIC_KEY"])
 app = App(token=os.environ["SLACK_BOT_TOKEN"])
@@ -54,11 +56,13 @@ def relay_stream(session_id: str, channel: str, thread_ts: str) -> None:
 
 def start_session(channel: str, thread_ts: str, question: str) -> None:
     try:
+        logging.info(f"Starting session for question: '{question}'")
         session = client.beta.sessions.create(
             environment_id=AGENT_ENV_ID,
             agent={"type": "agent", **AGENT_CONFIG},
             metadata={"slack_channel": channel, "slack_thread_ts": thread_ts},
         )
+        logging.info(f"Session created: {session.id}")
         thread_sessions[thread_ts] = session.id
 
         client.beta.sessions.events.send(
@@ -67,6 +71,7 @@ def start_session(channel: str, thread_ts: str, question: str) -> None:
         )
         relay_stream(session.id, channel, thread_ts)
     except Exception as e:
+        logging.error(f"Session error: {type(e).__name__}: {e}")
         app.client.chat_postMessage(
             channel=channel,
             thread_ts=thread_ts,
@@ -92,9 +97,11 @@ def continue_session(session_id: str, channel: str, thread_ts: str, text: str) -
 @app.event("app_mention")
 def on_mention(event: dict, say: object, ack: object) -> None:
     ack()
+    logging.info(f"Mention received: {event}")
     channel = event["channel"]
     thread_ts = event.get("thread_ts") or event["ts"]
     question = event["text"].split(">", 1)[-1].strip()
+    logging.info(f"Question: '{question}'")
 
     if not question:
         say(text="Hi! How can I help you?", thread_ts=thread_ts)

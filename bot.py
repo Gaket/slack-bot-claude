@@ -9,7 +9,7 @@ from slack_bolt.adapter.socket_mode import SocketModeHandler
 
 load_dotenv()
 
-client = Anthropic()
+client = Anthropic(api_key=os.environ["ANTROPIC_KEY"])
 app = App(token=os.environ["SLACK_BOT_TOKEN"])
 mrkdwn = SlackMarkdownConverter()
 

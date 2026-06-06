@@ -54,7 +54,8 @@ python bot.py
 
 | Variable | Description |
 |---|---|
-| `ANTHROPIC_API_KEY` | Your Anthropic API key |
+| `ANTROPIC_KEY` | Your Anthropic API key |
+| `APIFY_KEY` | Your Apify API key |
 | `SLACK_BOT_TOKEN` | `xoxb-...` Bot User OAuth Token |
 | `SLACK_APP_TOKEN` | `xapp-...` App-Level Token (Socket Mode) |
 | `AGENT_ENV_ID` | Managed agent environment ID |

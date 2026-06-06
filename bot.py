@@ -31,23 +31,37 @@ thread_sessions: dict[str, str] = {}
 
 def relay_stream(session_id: str, channel: str, thread_ts: str) -> None:
     summary = ""
+    thinking = ""
     posted_progress = False
 
     for ev in client.beta.sessions.events.stream(session_id):
         if ev.type == "agent.message":
             for block in ev.content:
-                if block.type == "text" and block.text.strip():
-                    summary = block.text
+                if hasattr(block, "type"):
+                    # Capture thinking blocks for extended thinking
+                    if block.type == "thinking" and hasattr(block, "thinking"):
+                        thinking = block.thinking.strip()
+                        if thinking:
+                            logging.info(f"Thinking: {thinking[:100]}...")
+                            thinking_text = f"💭 *Thinking:*\n```\n{thinking[:800]}\n```"
+                            if len(thinking) > 800:
+                                thinking_text += "\n_(truncated)_"
+                            app.client.chat_postMessage(
+                                channel=channel, thread_ts=thread_ts, text=thinking_text
+                            )
+                    # Capture final text response
+                    elif block.type == "text" and block.text.strip():
+                        summary = block.text
         elif ev.type == "agent.tool_use" and not posted_progress:
             app.client.chat_postMessage(
-                channel=channel, thread_ts=thread_ts, text="Working on it..."
+                channel=channel, thread_ts=thread_ts, text="🔧 Working on it..."
             )
             posted_progress = True
         elif ev.type == "session.status_idle":
             break
         elif ev.type == "session.status_terminated":
             app.client.chat_postMessage(
-                channel=channel, thread_ts=thread_ts, text="Session ended."
+                channel=channel, thread_ts=thread_ts, text="⏹ Session ended."
             )
             return
 

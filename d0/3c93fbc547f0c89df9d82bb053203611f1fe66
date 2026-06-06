@@ -1,0 +1,23 @@
+bot.py
+  s_ddc4e450e24c78::t_c0a50d6fa2187d 12
+.env.example
+  s_ddc4e450e24c78::t_ea5b6d77d3d780 1-2
+README.md
+  s_ddc4e450e24c78::t_988cf9b9218f25 57-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "d03c93fbc547f0c89df9d82bb053203611f1fe66",
+  "prompts": {},
+  "sessions": {
+    "s_ddc4e450e24c78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3df7e0f5-6fde-4e72-ae9a-e16a91cec696",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Artur Kuzmin <artursregs@gmail.com>"
+    }
+  }
+}

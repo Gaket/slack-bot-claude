@@ -145,25 +145,13 @@ def on_message(event: dict, ack: object) -> None:
         logging.debug("Skipping self message")
         return
 
-    # Case 1: Reply in existing thread session
+    # Only handle thread replies in message events
+    # (New mentions are handled by app_mention event to avoid duplicates)
     if thread_ts and thread_ts in thread_sessions:
         session_id = thread_sessions[thread_ts]
         logging.debug(f"Continuing session in thread: {session_id}")
         threading.Thread(
             target=continue_session, args=(session_id, channel, thread_ts, text), daemon=True
-        ).start()
-        return
-
-    # Case 2: New message mentioning the bot (only for new conversations)
-    bot_mention = f"<@{BOT_USER_ID}>"
-    if bot_mention in text or "@Nyle Helper" in text:
-        question = text.split(">", 1)[-1].strip() if ">" in text else text.strip()
-        if not question:
-            return
-        thread_ts = thread_ts or event["ts"]
-        logging.info(f"New mention detected: '{question}'")
-        threading.Thread(
-            target=start_session, args=(channel, thread_ts, question), daemon=True
         ).start()
 
 

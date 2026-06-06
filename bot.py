@@ -124,13 +124,18 @@ def on_message(event: dict, ack: object) -> None:
     channel = event["channel"]
     thread_ts = event.get("thread_ts")
 
+    logging.debug(f"Message event: text='{text[:50]}...', bot_id={event.get('bot_id')}, metadata={event.get('metadata')}")
+
     # Check if this is a self-triggered message with API marker
     is_self = event.get("bot_id") == BOT_ID
     metadata = event.get("metadata", {}) or {}
     is_api_trigger = metadata.get("event_type") == "nyle_helper_trigger"
 
+    logging.debug(f"is_self={is_self}, is_api_trigger={is_api_trigger}")
+
     # Skip accidental self-messages, but allow intentional API triggers
     if is_self and not is_api_trigger:
+        logging.debug("Skipping self message")
         return
 
     # Case 1: Reply in existing thread session

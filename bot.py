@@ -21,6 +21,10 @@ AGENT_CONFIG = {
     "version": int(os.environ["AGENT_VERSION"]),
 }
 
+# Bot's user ID (for mentions) — get from auth.test if not in env
+BOT_USER_ID = os.environ.get("SLACK_BOT_USER_ID", "U0ACMNZ6SSU")
+BOT_ID = os.environ.get("SLACK_BOT_ID", "B0ABX2CETBN")
+
 # Maps Slack thread_ts → Anthropic session_id
 thread_sessions: dict[str, str] = {}
 
@@ -116,15 +120,18 @@ def on_mention(event: dict, say: object, ack: object) -> None:
 @app.event("message")
 def on_message(event: dict, ack: object) -> None:
     ack()
-    if event.get("bot_id"):
-        return
-
     text = event.get("text", "")
-    bot_id = AGENT_CONFIG.get("id") or os.environ.get("SLACK_BOT_ID", "")
-    bot_mention = f"<@{os.environ['SLACK_BOT_ID'].split(':')[0]}>" if "SLACK_BOT_ID" in os.environ else f"<@{os.environ.get('SLACK_BOT_ID', '')}>"
-
     channel = event["channel"]
     thread_ts = event.get("thread_ts")
+
+    # Check if this is a self-triggered message with API marker
+    is_self = event.get("bot_id") == BOT_ID
+    metadata = event.get("metadata", {}) or {}
+    is_api_trigger = metadata.get("event_type") == "nyle_helper_trigger"
+
+    # Skip accidental self-messages, but allow intentional API triggers
+    if is_self and not is_api_trigger:
+        return
 
     # Case 1: Reply in existing thread session
     if thread_ts and thread_ts in thread_sessions:
@@ -134,8 +141,9 @@ def on_message(event: dict, ack: object) -> None:
         ).start()
         return
 
-    # Case 2: New message mentioning the bot (either in thread or as new message)
-    if f"<@{os.environ.get('SLACK_BOT_ID')}>" in text or "@Nyle Helper" in text or "<@B0ABX2CETBN>" in text:
+    # Case 2: New message mentioning the bot
+    bot_mention = f"<@{BOT_USER_ID}>"
+    if bot_mention in text or "@Nyle Helper" in text or is_api_trigger:
         question = text.split(">", 1)[-1].strip() if ">" in text else text.strip()
         if not question:
             return

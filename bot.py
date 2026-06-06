@@ -124,36 +124,30 @@ def on_message(event: dict, ack: object) -> None:
     channel = event["channel"]
     thread_ts = event.get("thread_ts")
 
-    logging.debug(f"Message event: text='{text[:50]}...', bot_id={event.get('bot_id')}, metadata={event.get('metadata')}")
+    logging.debug(f"Message event: text='{text[:50]}...', bot_id={event.get('bot_id')}")
 
-    # Check if this is a self-triggered message with API marker
-    is_self = event.get("bot_id") == BOT_ID
-    metadata = event.get("metadata", {}) or {}
-    is_api_trigger = metadata.get("event_type") == "nyle_helper_trigger"
-
-    logging.debug(f"is_self={is_self}, is_api_trigger={is_api_trigger}")
-
-    # Skip accidental self-messages, but allow intentional API triggers
-    if is_self and not is_api_trigger:
+    # Skip own messages to prevent recursion
+    if event.get("bot_id") == BOT_ID:
         logging.debug("Skipping self message")
         return
 
     # Case 1: Reply in existing thread session
     if thread_ts and thread_ts in thread_sessions:
         session_id = thread_sessions[thread_ts]
+        logging.debug(f"Continuing session in thread: {session_id}")
         threading.Thread(
             target=continue_session, args=(session_id, channel, thread_ts, text), daemon=True
         ).start()
         return
 
-    # Case 2: New message mentioning the bot
+    # Case 2: New message mentioning the bot (only for new conversations)
     bot_mention = f"<@{BOT_USER_ID}>"
-    if bot_mention in text or "@Nyle Helper" in text or is_api_trigger:
+    if bot_mention in text or "@Nyle Helper" in text:
         question = text.split(">", 1)[-1].strip() if ">" in text else text.strip()
         if not question:
             return
         thread_ts = thread_ts or event["ts"]
-        logging.info(f"Message mention: '{question}'")
+        logging.info(f"New mention detected: '{question}'")
         threading.Thread(
             target=start_session, args=(channel, thread_ts, question), daemon=True
         ).start()

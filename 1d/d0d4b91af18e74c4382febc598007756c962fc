@@ -1,0 +1,22 @@
+bot.py
+  s_ddc4e450e24c78::t_ebe09e6c8c3198 76-83
+  s_ddc4e450e24c78::t_8a10c748e0396e 23
+.env.example
+  s_ddc4e450e24c78::t_d225d11f4370da 11-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1dd0d4b91af18e74c4382febc598007756c962fc",
+  "prompts": {},
+  "sessions": {
+    "s_ddc4e450e24c78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3df7e0f5-6fde-4e72-ae9a-e16a91cec696",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Artur Kuzmin <artursregs@gmail.com>"
+    }
+  }
+}

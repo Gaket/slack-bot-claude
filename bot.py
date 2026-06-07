@@ -20,6 +20,7 @@ AGENT_CONFIG = {
     "id": os.environ["AGENT_ID"],
     "version": int(os.environ["AGENT_VERSION"]),
 }
+VAULT_IDS = os.environ.get("VAULT_IDS", "").split(",") if os.environ.get("VAULT_IDS") else []
 
 # Bot's user ID (for mentions) — get from auth.test if not in env
 BOT_USER_ID = os.environ.get("SLACK_BOT_USER_ID", "U0ACMNZ6SSU")
@@ -72,11 +73,14 @@ def relay_stream(session_id: str, channel: str, thread_ts: str) -> None:
 def start_session(channel: str, thread_ts: str, question: str) -> None:
     try:
         logging.info(f"Starting session for question: '{question}'")
-        session = client.beta.sessions.create(
-            environment_id=AGENT_ENV_ID,
-            agent={"type": "agent", **AGENT_CONFIG},
-            metadata={"slack_channel": channel, "slack_thread_ts": thread_ts},
-        )
+        session_params = {
+            "environment_id": AGENT_ENV_ID,
+            "agent": {"type": "agent", **AGENT_CONFIG},
+            "metadata": {"slack_channel": channel, "slack_thread_ts": thread_ts},
+        }
+        if VAULT_IDS:
+            session_params["vault_ids"] = VAULT_IDS
+        session = client.beta.sessions.create(**session_params)
         logging.info(f"Session created: {session.id}")
         thread_sessions[thread_ts] = session.id
 

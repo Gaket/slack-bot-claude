@@ -44,18 +44,22 @@ def relay_stream(session_id: str, channel: str, thread_ts: str) -> None:
                             logging.info(f"Thinking: {thinking[:100]}...")
                             thinking_text = f"💭 *Thinking:*\n```\n{thinking[:800]}\n```"
                             if len(thinking) > 800:
-                                thinking_text += "\n_(truncated)_"
+                                thinking_text += "\n_(continued in thread)_"
                             app.client.chat_postMessage(
                                 channel=channel, thread_ts=thread_ts, text=thinking_text
                             )
-                    # Post text blocks immediately
+                    # Post text blocks immediately, split into chunks if needed
                     elif block.type == "text" and block.text.strip():
                         text = mrkdwn.convert(block.text)
-                        if len(text) > 3900:
-                            text = text[:3900] + "\n_(truncated)_"
-                        app.client.chat_postMessage(
-                            channel=channel, thread_ts=thread_ts, text=text
-                        )
+                        # Slack has a 4000 char limit per message; split into chunks
+                        chunk_size = 3900
+                        chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+                        for i, chunk in enumerate(chunks):
+                            if i > 0:
+                                chunk = f"_(continued...)_\n{chunk}"
+                            app.client.chat_postMessage(
+                                channel=channel, thread_ts=thread_ts, text=chunk
+                            )
         elif ev.type == "agent.tool_use" and not posted_progress:
             app.client.chat_postMessage(
                 channel=channel, thread_ts=thread_ts, text="🔧 Working on it..."

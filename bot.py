@@ -30,15 +30,13 @@ thread_sessions: dict[str, str] = {}
 
 
 def relay_stream(session_id: str, channel: str, thread_ts: str) -> None:
-    summary = ""
-    thinking = ""
     posted_progress = False
 
     for ev in client.beta.sessions.events.stream(session_id):
         if ev.type == "agent.message":
             for block in ev.content:
                 if hasattr(block, "type"):
-                    # Capture thinking blocks for extended thinking
+                    # Post thinking blocks immediately
                     if block.type == "thinking" and hasattr(block, "thinking"):
                         thinking = block.thinking.strip()
                         if thinking:
@@ -49,9 +47,14 @@ def relay_stream(session_id: str, channel: str, thread_ts: str) -> None:
                             app.client.chat_postMessage(
                                 channel=channel, thread_ts=thread_ts, text=thinking_text
                             )
-                    # Capture final text response
+                    # Post text blocks immediately
                     elif block.type == "text" and block.text.strip():
-                        summary = block.text
+                        text = mrkdwn.convert(block.text)
+                        if len(text) > 3900:
+                            text = text[:3900] + "\n_(truncated)_"
+                        app.client.chat_postMessage(
+                            channel=channel, thread_ts=thread_ts, text=text
+                        )
         elif ev.type == "agent.tool_use" and not posted_progress:
             app.client.chat_postMessage(
                 channel=channel, thread_ts=thread_ts, text="🔧 Working on it..."
@@ -64,12 +67,6 @@ def relay_stream(session_id: str, channel: str, thread_ts: str) -> None:
                 channel=channel, thread_ts=thread_ts, text="⏹ Session ended."
             )
             return
-
-    if summary:
-        text = mrkdwn.convert(summary)
-        if len(text) > 3900:
-            text = text[:3900] + "\n_(truncated)_"
-        app.client.chat_postMessage(channel=channel, thread_ts=thread_ts, text=text)
 
 
 def start_session(channel: str, thread_ts: str, question: str) -> None:

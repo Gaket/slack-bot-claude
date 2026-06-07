@@ -34,6 +34,24 @@ class SlackPoster:
     def post_error(self, channel: str, thread_ts: str | None, exc: Exception) -> None:
         self.post(channel, thread_ts, f"Something went wrong: {type(exc).__name__}: {exc}")
 
+    def post_status(self, channel: str, thread_ts: str | None, text: str) -> str | None:
+        # Best-effort progress indicator; returns the message ts so it can be
+        # edited in place. None means "don't try to update later".
+        try:
+            resp = self._client.chat_postMessage(
+                channel=channel, thread_ts=thread_ts, text=text
+            )
+            return resp["ts"] if resp else None
+        except Exception as e:
+            logging.warning(f"Could not post status: {type(e).__name__}: {e}")
+            return None
+
+    def update_status(self, channel: str, ts: str, text: str) -> None:
+        try:
+            self._client.chat_update(channel=channel, ts=ts, text=text)
+        except Exception as e:
+            logging.warning(f"Could not update status: {type(e).__name__}: {e}")
+
     def add_reaction(self, channel: str, ts: str, name: str) -> None:
         # Best-effort: missing reactions:write scope must not break the reply flow.
         try:

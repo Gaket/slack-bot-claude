@@ -50,7 +50,7 @@ firebase deploy --only functions:slackbot --force
 ```
 
 A deploy takes **~2–4 minutes** end to end (upload, container build, revision rollout).
-`--force` is needed because `min_instances: 1` has billing implications.
+`--force` skips interactive confirmation prompts so the deploy works scripted/non-interactively.
 
 After the first deploy:
 
@@ -70,6 +70,31 @@ After the first deploy:
    gcloud firestore fields ttls update processed_at \
      --collection-group=processed_events --database=slackbot \
      --enable-ttl --project=YOUR_PROJECT
+   ```
+4. **Required:** switch the service to always-allocated CPU. The agent response is
+   streamed to Slack by a background thread *after* the HTTP response returns, and
+   under default request-based billing Cloud Run throttles CPU to ~zero between
+   requests — the relay thread starves and replies never reach Slack:
+   ```bash
+   gcloud run services update slackbot --region=us-central1 \
+     --project=YOUR_PROJECT --no-cpu-throttling
+   ```
+   `firebase deploy` does not manage this flag, so it survives redeploys — but if
+   replies go silent after a deploy, verify it is still set. With `min_instances: 0`
+   you pay only while an instance is alive (instances linger ~15 min after the last
+   request); a cold start blows Slack's 3s deadline, which is harmless thanks to the
+   event_id dedup — the first 👀 reaction just arrives a few seconds late. One known
+   trade-off: Cloud Run may reclaim an idle instance, so a reply still streaming many
+   minutes after the triggering request could in rare cases be cut off mid-thread.
+5. A Cloud Scheduler job (`slackbot-keepalive`) GETs the function's `/health` path
+   every 10 minutes between 9:00am and 11:50pm ET on weekdays (`*/10 9-23 * * 1-5`,
+   `America/New_York`), keeping the instance warm — and the runtime pre-built — during
+   working hours while still scaling to zero overnight and on weekends:
+   ```bash
+   gcloud scheduler jobs create http slackbot-keepalive \
+     --project=YOUR_PROJECT --location=us-central1 \
+     --schedule="*/10 9-23 * * 1-5" --time-zone="America/New_York" \
+     --uri="https://FUNCTION_URL/health" --http-method=GET
    ```
 
 ### Tests

@@ -35,9 +35,14 @@ class FakeSlackClient:
     def __init__(self):
         self.calls = []
         self.reactions = []
+        self.updates = []
 
     def chat_postMessage(self, **kwargs):
         self.calls.append(kwargs)
+        return {"ts": f"posted_{len(self.calls)}"}
+
+    def chat_update(self, **kwargs):
+        self.updates.append(kwargs)
 
     def reactions_add(self, **kwargs):
         self.reactions.append(kwargs)

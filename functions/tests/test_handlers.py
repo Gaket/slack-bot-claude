@@ -92,8 +92,10 @@ def test_dm_thread_reply_continues_existing_session():
     assert deps.anthropic.sessions.created == []
     [(session_id, _)] = deps.anthropic.sessions.sent
     assert session_id == "sesn_dm"
-    # No reaction on thread replies
-    assert deps.slack_client.reactions == []
+    # 👀 on the reply itself signals the message was received
+    assert deps.slack_client.reactions == [
+        {"channel": "D1", "timestamp": "2.0", "name": "eyes"}
+    ]
 
 
 def test_dm_thread_reply_without_session_starts_one_keyed_by_thread():
@@ -155,6 +157,9 @@ def test_thread_reply_continues_existing_session():
 
     [(session_id, _)] = deps.anthropic.sessions.sent
     assert session_id == "sesn_thread"
+    assert deps.slack_client.reactions == [
+        {"channel": "C1", "timestamp": "101.0", "name": "eyes"}
+    ]
 
 
 def test_thread_reply_without_session_is_noop():
@@ -166,6 +171,8 @@ def test_thread_reply_without_session_is_noop():
     )
     assert deps.anthropic.sessions.sent == []
     assert deps.anthropic.sessions.created == []
+    # No session for this thread → bot isn't involved, so no reaction either
+    assert deps.slack_client.reactions == []
 
 
 def test_non_thread_channel_message_ignored():

@@ -58,7 +58,15 @@ def test_empty_blocks_skipped():
     assert client.calls == []
 
 
-def test_tool_use_posts_nothing():
+def test_first_tool_use_posts_single_status_message():
+    poster, client = make_poster()
+    relay_stream([tool_use_event(), idle_event()], poster, "C1", "ts1")
+    [status] = client.texts
+    assert "Working" in status
+    assert client.calls[0]["thread_ts"] == "ts1"
+
+
+def test_more_tool_uses_update_status_in_place():
     poster, client = make_poster()
     relay_stream(
         [tool_use_event(), tool_use_event(), tool_use_event(), idle_event()],
@@ -66,7 +74,57 @@ def test_tool_use_posts_nothing():
         "C1",
         "ts1",
     )
-    assert client.texts == []
+    # One posted message, edited in place — not a stream of new ones.
+    assert len(client.calls) == 1
+    assert client.updates[0]["ts"] == "posted_1"
+    assert "(3 steps)" in client.updates[-2]["text"]
+
+
+def test_status_finalized_on_idle():
+    poster, client = make_poster()
+    relay_stream([tool_use_event(), tool_use_event(), idle_event()], poster, "C1", "ts1")
+    assert "✅" in client.updates[-1]["text"]
+    assert "(2 steps)" in client.updates[-1]["text"]
+
+
+def test_no_status_message_without_tool_use():
+    poster, client = make_poster()
+    relay_stream([text_event("quick answer"), idle_event()], poster, "C1", "ts1")
+    assert client.texts == ["quick answer"]
+    assert client.updates == []
+
+
+def test_status_finalized_on_terminated():
+    poster, client = make_poster()
+    relay_stream([tool_use_event(), terminated_event()], poster, "C1", "ts1")
+    assert "✅" in client.updates[-1]["text"]
+    assert TERMINATED_MESSAGE in client.texts
+
+
+def test_status_marked_interrupted_when_stream_raises():
+    poster, client = make_poster()
+
+    def broken_stream():
+        yield tool_use_event()
+        raise RuntimeError("stream died")
+
+    try:
+        relay_stream(broken_stream(), poster, "C1", "ts1")
+    except RuntimeError:
+        pass
+    assert "⚠️" in client.updates[-1]["text"]
+
+
+def test_status_precedes_answer_text():
+    poster, client = make_poster()
+    relay_stream(
+        [tool_use_event(), text_event("the number is 42"), idle_event()],
+        poster,
+        "C1",
+        "ts1",
+    )
+    assert "Working" in client.texts[0]
+    assert client.texts[1] == "the number is 42"
 
 
 def test_idle_stops_stream():

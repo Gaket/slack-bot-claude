@@ -1,4 +1,11 @@
 .env
+functions/.env
+functions/.env.*
+!functions/.env.example
+
+# Real deployment config — use the .example files as templates
+slack-manifest.json
+.firebaserc
 __pycache__/
 *.pyc
 *.pyo

@@ -17,12 +17,29 @@ def session_key(channel: str, thread_ts: str) -> str:
     return f"{channel}:{thread_ts}"
 
 
-def handle_app_mention(event: dict, say, ack, deps: "Deps") -> None:
+def _already_handled(event_id: str | None, deps: "Deps") -> bool:
+    # Slack redelivers events whose response missed the 3s deadline (and may
+    # duplicate deliveries outright); without this claim each redelivery would
+    # start another agent session. Duplicates still get a 200 via ack() so
+    # Slack stops retrying.
+    if not event_id:
+        return False
+    if deps.deduper.claim(event_id):
+        return False
+    logging.info(f"Skipping duplicate Slack delivery for event {event_id}")
+    return True
+
+
+def handle_app_mention(
+    event: dict, say, ack, deps: "Deps", event_id: str | None = None
+) -> None:
     ack()
     channel = event["channel"]
     # A DM that mentions the bot fires BOTH app_mention and message.im for the
     # same text; the message handler owns DMs, so skip here to avoid double replies.
     if channel.startswith("D"):
+        return
+    if _already_handled(event_id, deps):
         return
     thread_ts = event.get("thread_ts") or event["ts"]
     question = event["text"].split(">", 1)[-1].strip()
@@ -42,10 +59,14 @@ def handle_app_mention(event: dict, say, ack, deps: "Deps") -> None:
     )
 
 
-def handle_message(event: dict, ack, deps: "Deps") -> None:
+def handle_message(
+    event: dict, ack, deps: "Deps", event_id: str | None = None
+) -> None:
     ack()
     # Ignore the bot's own messages and edits/joins/other system subtypes.
     if event.get("bot_id") == deps.config.bot_id or event.get("subtype"):
+        return
+    if _already_handled(event_id, deps):
         return
 
     channel = event["channel"]
@@ -92,9 +113,9 @@ def register_handlers(bolt_app: "App", deps: "Deps") -> None:
     # Shims must declare exactly the params bolt should inject (matched by name);
     # wrapping with functools.partial would break bolt's signature inspection.
     @bolt_app.event("app_mention")
-    def _on_mention(event, say, ack):
-        handle_app_mention(event, say, ack, deps)
+    def _on_mention(body, event, say, ack):
+        handle_app_mention(event, say, ack, deps, event_id=body.get("event_id"))
 
     @bolt_app.event("message")
-    def _on_message(event, ack):
-        handle_message(event, ack, deps)
+    def _on_message(body, event, ack):
+        handle_message(event, ack, deps, event_id=body.get("event_id"))

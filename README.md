@@ -62,6 +62,15 @@ After the first deploy:
    ```
 2. In the Slack app config → Event Subscriptions, verify the request URL
    (`https://REGION-PROJECT.cloudfunctions.net/slackbot`) and install the app.
+3. Slack delivers events at-least-once (it retries whenever a response misses its
+   3s deadline, e.g. on a cold start), so each delivery is claimed by `event_id`
+   in the `processed_events` collection to avoid duplicate agent sessions. Set a
+   TTL policy so old claims expire instead of accumulating:
+   ```bash
+   gcloud firestore fields ttls update processed_at \
+     --collection-group=processed_events --database=slackbot \
+     --enable-ttl --project=YOUR_PROJECT
+   ```
 
 ### Tests
 

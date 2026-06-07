@@ -12,7 +12,7 @@ from .config import Config
 from .dispatch import Dispatcher, ThreadDispatcher
 from .handlers import register_handlers
 from .slack_out import SlackPoster
-from .store import FirestoreSessionStore, SessionStore
+from .store import EventDeduper, FirestoreEventDeduper, FirestoreSessionStore, SessionStore
 
 
 @dataclass(frozen=True)
@@ -20,6 +20,7 @@ class Deps:
     config: Config
     anthropic: Anthropic
     store: SessionStore
+    deduper: EventDeduper
     poster: SlackPoster
     dispatcher: Dispatcher
     bolt_app: App
@@ -60,12 +61,14 @@ def _build_runtime() -> Runtime:
         signing_secret=config.slack_signing_secret,
         process_before_response=True,
     )
+    # Named Native-mode database: the project's (default) database is in
+    # Datastore Mode, which the Firestore client API cannot use.
+    db = firestore.client(database_id="slackbot")
     deps = Deps(
         config=config,
         anthropic=Anthropic(api_key=config.anthropic_api_key),
-        # Named Native-mode database: the project's (default) database is in
-        # Datastore Mode, which the Firestore client API cannot use.
-        store=FirestoreSessionStore(firestore.client(database_id="slackbot")),
+        store=FirestoreSessionStore(db),
+        deduper=FirestoreEventDeduper(db),
         poster=SlackPoster(bolt_app.client, SlackMarkdownConverter()),
         dispatcher=ThreadDispatcher(),
         bolt_app=bolt_app,

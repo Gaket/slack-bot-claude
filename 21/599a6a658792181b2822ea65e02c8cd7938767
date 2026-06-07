@@ -1,0 +1,21 @@
+test_iteration.py
+  s_ddc4e450e24c78::t_e2e90fd958ce49 1-52
+bot.py
+  s_ddc4e450e24c78::t_6e7afddffa9c1a 39,50,52-57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "21599a6a658792181b2822ea65e02c8cd7938767",
+  "prompts": {},
+  "sessions": {
+    "s_ddc4e450e24c78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3df7e0f5-6fde-4e72-ae9a-e16a91cec696",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Artur Kuzmin <artursregs@gmail.com>"
+    }
+  }
+}

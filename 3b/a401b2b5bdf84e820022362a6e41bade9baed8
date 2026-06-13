@@ -1,0 +1,45 @@
+functions/tests/test_config.py
+  s_4b135439a43709::t_01dc2915aac651 9,23,33,41-47
+functions/app/config.py
+  s_4b135439a43709::t_24ca11b9068ed4 10-13,15,32-33
+functions/app/store.py
+  s_4b135439a43709::t_78647da12c251a 1
+  s_4b135439a43709::t_b6f2636c0487b5 47-50,59-94
+bot.py
+  s_4b135439a43709::t_834637f7dc76bd 1-12,15,21,23-25,27-28,31-34,36-45,49
+functions/tests/test_store.py
+  s_4b135439a43709::t_75bc4120829221 1-27
+RAILWAY_REDEPLOY.md
+  s_ddc4e450e24c78::t_9ea4b4ee7d5db9 1-60,71-92
+  s_4b135439a43709::t_5cca206e4628ba 61-70
+.gitignore
+  s_4b135439a43709::t_2622c9aa21f6ed 17-18
+functions/tests/conftest.py
+  s_4b135439a43709::t_3e4c1fb047c931 115
+functions/app/runtime.py
+  s_4b135439a43709::t_41cdd6808c2133 1-2,5,15-18,38-59,65-66,81-89,102-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "3ba401b2b5bdf84e820022362a6e41bade9baed8",
+  "prompts": {},
+  "sessions": {
+    "s_4b135439a43709": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff773152-c1b4-489a-8515-56df45974c87",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Artur Kuzmin <artursregs@gmail.com>"
+    },
+    "s_ddc4e450e24c78": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3df7e0f5-6fde-4e72-ae9a-e16a91cec696",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Artur Kuzmin <artursregs@gmail.com>"
+    }
+  }
+}

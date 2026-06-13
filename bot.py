@@ -130,7 +130,6 @@ def on_mention(event: dict, say: object, ack: object) -> None:
         say(text="Hi! How can I help you?", thread_ts=thread_ts)
         return
 
-    say(text="On it...", thread_ts=thread_ts)
     threading.Thread(
         target=start_session, args=(channel, thread_ts, question), daemon=True
     ).start()

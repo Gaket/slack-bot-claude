@@ -7,9 +7,7 @@ if TYPE_CHECKING:
     from slack_bolt import App
 
     from .runtime import Deps
-
 GREETING = "Hi! How can I help you?"
-ACK_MESSAGE = "On it..."
 
 
 def session_key(channel: str, thread_ts: str) -> str:
@@ -58,7 +56,6 @@ def handle_app_mention(
     deps.poster.add_reaction(channel, event["ts"], "eyes")
     if _already_handled(event_id, deps):
         return
-    say(text=ACK_MESSAGE, thread_ts=thread_ts)
     # In a channel, the session is keyed by the thread and replies thread under the mention.
     deps.dispatcher.dispatch(
         lambda: start_conversation(

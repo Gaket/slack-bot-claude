@@ -1,6 +1,6 @@
 from conftest import idle_event, make_deps, text_event
 
-from app.handlers import ACK_MESSAGE, GREETING, handle_app_mention, handle_message
+from app.handlers import GREETING, handle_app_mention, handle_message
 
 
 class SayRecorder:
@@ -40,7 +40,7 @@ def test_mention_starts_session_keyed_by_ts():
     handle_app_mention(mention_event(), say, ack, deps)
 
     assert ack.count == 1
-    assert say.calls[0]["text"] == ACK_MESSAGE
+    assert say.calls == []
     [created] = deps.anthropic.sessions.created
     assert created["metadata"]["slack_session_key"] == "C1:100.1"
     assert deps.store.get("C1:100.1") == "sesn_test"

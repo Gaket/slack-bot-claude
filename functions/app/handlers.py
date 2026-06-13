@@ -22,6 +22,13 @@ def _already_handled(event_id: str | None, deps: "Deps") -> bool:
     # duplicate deliveries outright); without this claim each redelivery would
     # start another agent session. Duplicates still get a 200 via ack() so
     # Slack stops retrying.
+    #
+    # Claim as the LAST step before dispatching work: everything fallible
+    # (store reads, reactions) happens first, so a crash after the claim but
+    # before the 200 — the one window where a deduped retry would silently
+    # drop the message — is nearly impossible. The claim is at-most-once by
+    # design: once work is dispatched, failures are reported to the thread
+    # by the relay's error path, not retried by Slack.
     if not event_id:
         return False
     if deps.deduper.claim(event_id):
@@ -39,17 +46,18 @@ def handle_app_mention(
     # same text; the message handler owns DMs, so skip here to avoid double replies.
     if channel.startswith("D"):
         return
-    if _already_handled(event_id, deps):
-        return
     thread_ts = event.get("thread_ts") or event["ts"]
     question = event["text"].split(">", 1)[-1].strip()
     logging.info(f"Mention received, question: '{question}'")
 
     if not question:
-        say(text=GREETING, thread_ts=thread_ts)
+        if not _already_handled(event_id, deps):
+            say(text=GREETING, thread_ts=thread_ts)
         return
 
     deps.poster.add_reaction(channel, event["ts"], "eyes")
+    if _already_handled(event_id, deps):
+        return
     say(text=ACK_MESSAGE, thread_ts=thread_ts)
     # In a channel, the session is keyed by the thread and replies thread under the mention.
     deps.dispatcher.dispatch(
@@ -66,8 +74,6 @@ def handle_message(
     # Ignore the bot's own messages and edits/joins/other system subtypes.
     if event.get("bot_id") == deps.config.bot_id or event.get("subtype"):
         return
-    if _already_handled(event_id, deps):
-        return
 
     channel = event["channel"]
     text = event.get("text", "")
@@ -79,7 +85,10 @@ def handle_message(
     if event.get("channel_type") == "im":
         ts = event["ts"]
         if thread_ts:
+            deps.poster.add_reaction(channel, ts, "eyes")
             session_id = deps.store.get(session_key(channel, thread_ts))
+            if _already_handled(event_id, deps):
+                return
             if session_id:
                 deps.dispatcher.dispatch(
                     lambda: continue_conversation(deps, session_id, channel, text, thread_ts)
@@ -92,6 +101,8 @@ def handle_message(
                 )
         else:
             deps.poster.add_reaction(channel, ts, "eyes")
+            if _already_handled(event_id, deps):
+                return
             deps.dispatcher.dispatch(
                 lambda: start_conversation(
                     deps, channel, session_key(channel, ts), text, ts
@@ -99,11 +110,16 @@ def handle_message(
             )
         return
 
-    # Channel/group: only continue an existing thread session.
-    # New conversations in channels start via app_mention, not here.
+    # Channel/group: only continue an existing thread session. New conversations
+    # in channels start via app_mention, not here — so the dedup claim (a
+    # Firestore write) only happens once this is known to be the bot's thread,
+    # not for every message in every channel the bot is in.
     if thread_ts:
         session_id = deps.store.get(session_key(channel, thread_ts))
         if session_id:
+            deps.poster.add_reaction(channel, event["ts"], "eyes")
+            if _already_handled(event_id, deps):
+                return
             deps.dispatcher.dispatch(
                 lambda: continue_conversation(deps, session_id, channel, text, thread_ts)
             )

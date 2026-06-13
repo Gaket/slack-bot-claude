@@ -1,7 +1,6 @@
+import threading
 from datetime import datetime, timezone
 from typing import Protocol
-
-from google.api_core.exceptions import AlreadyExists
 
 
 class SessionStore(Protocol):
@@ -45,6 +44,10 @@ class FirestoreEventDeduper:
         self._db = db
 
     def claim(self, event_id: str) -> bool:
+        # Imported lazily so non-Firestore entrypoints (Railway Socket Mode) never
+        # need google-cloud libraries on their import path.
+        from google.api_core.exceptions import AlreadyExists
+
         try:
             # processed_at enables a Firestore TTL policy to expire old claims.
             self._db.collection(self.COLLECTION).document(event_id).create(
@@ -53,3 +56,39 @@ class FirestoreEventDeduper:
             return True
         except AlreadyExists:
             return False
+
+
+class InMemorySessionStore:
+    """Process-local session map for the single long-lived Socket Mode instance
+    (Railway). State resets on restart, matching the original socket-mode bot.
+    """
+
+    def __init__(self) -> None:
+        self._data: dict[str, str] = {}
+        self._lock = threading.Lock()
+
+    def get(self, key: str) -> str | None:
+        with self._lock:
+            return self._data.get(key)
+
+    def set(self, key: str, session_id: str) -> None:
+        with self._lock:
+            self._data[key] = session_id
+
+
+class InMemoryEventDeduper:
+    """Process-local at-most-once claim for Socket Mode, which also redelivers
+    unacked events. Sufficient for a single instance; claims live for the
+    process lifetime.
+    """
+
+    def __init__(self) -> None:
+        self._claimed: set[str] = set()
+        self._lock = threading.Lock()
+
+    def claim(self, event_id: str) -> bool:
+        with self._lock:
+            if event_id in self._claimed:
+                return False
+            self._claimed.add(event_id)
+            return True

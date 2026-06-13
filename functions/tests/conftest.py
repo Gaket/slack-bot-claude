@@ -112,6 +112,7 @@ def make_config(**overrides):
         anthropic_api_key="sk-test",
         slack_bot_token="xoxb-test",
         slack_signing_secret="sig-test",
+        slack_app_token="xapp-test",
         agent_env_id="env_test",
         agent_id="agent_test",
         agent_version=1,

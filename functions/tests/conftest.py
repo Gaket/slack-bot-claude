@@ -20,6 +20,17 @@ class FakeStore:
         self.data[key] = session_id
 
 
+class FakeDeduper:
+    def __init__(self):
+        self.claimed = set()
+
+    def claim(self, event_id):
+        if event_id in self.claimed:
+            return False
+        self.claimed.add(event_id)
+        return True
+
+
 class FakeSlackClient:
     def __init__(self):
         self.calls = []
@@ -113,6 +124,7 @@ def make_deps(stream_events=(), config=None, slack_client=None):
         config=config or make_config(),
         anthropic=FakeAnthropic(stream_events),
         store=FakeStore(),
+        deduper=FakeDeduper(),
         poster=SlackPoster(client, IdentityConverter()),
         dispatcher=InlineDispatcher(),
         slack_client=client,

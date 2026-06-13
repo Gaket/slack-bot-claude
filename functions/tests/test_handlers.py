@@ -207,6 +207,67 @@ def test_subtype_message_ignored():
     assert deps.anthropic.sessions.created == []
 
 
+# Slack's Events API is at-least-once: it redelivers (immediately, +1min, +5min)
+# whenever a response misses its 3s deadline, reusing the same event_id. Each
+# delivery must be processed at most once or every retry spawns a new session.
+
+
+def test_duplicate_dm_delivery_same_event_id_starts_one_session():
+    deps = make_deps(stream_events=[idle_event()])
+    ev = {"channel": "D1", "channel_type": "im", "text": "hi", "ts": "1.0"}
+    handle_message(dict(ev), AckRecorder(), deps, event_id="Ev1")
+    handle_message(dict(ev), AckRecorder(), deps, event_id="Ev1")
+    assert len(deps.anthropic.sessions.created) == 1
+
+
+def test_duplicate_mention_delivery_same_event_id_starts_one_session():
+    deps = make_deps(stream_events=[idle_event()])
+    handle_app_mention(mention_event(), SayRecorder(), AckRecorder(), deps, event_id="Ev2")
+    handle_app_mention(mention_event(), SayRecorder(), AckRecorder(), deps, event_id="Ev2")
+    assert len(deps.anthropic.sessions.created) == 1
+
+
+def test_duplicate_thread_reply_same_event_id_sends_once():
+    deps = make_deps(stream_events=[idle_event()])
+    deps.store.set("C1:100.1", "sesn_thread")
+    ev = {"channel": "C1", "thread_ts": "100.1", "text": "follow up", "ts": "101.0"}
+    handle_message(dict(ev), AckRecorder(), deps, event_id="Ev3")
+    handle_message(dict(ev), AckRecorder(), deps, event_id="Ev3")
+    assert len(deps.anthropic.sessions.sent) == 1
+
+
+def test_duplicate_delivery_still_acks():
+    deps = make_deps(stream_events=[idle_event()])
+    ev = {"channel": "D1", "channel_type": "im", "text": "hi", "ts": "1.0"}
+    handle_message(dict(ev), AckRecorder(), deps, event_id="Ev4")
+    ack = AckRecorder()
+    handle_message(dict(ev), AckRecorder(), deps, event_id="Ev4")
+    handle_message(dict(ev), ack, deps, event_id="Ev4")
+    assert ack.count == 1
+
+
+def test_distinct_event_ids_processed_independently():
+    deps = make_deps(stream_events=[idle_event()])
+    handle_message(
+        {"channel": "D1", "channel_type": "im", "text": "one", "ts": "1.0"},
+        AckRecorder(), deps, event_id="EvA",
+    )
+    handle_message(
+        {"channel": "D1", "channel_type": "im", "text": "two", "ts": "2.0"},
+        AckRecorder(), deps, event_id="EvB",
+    )
+    assert len(deps.anthropic.sessions.created) == 2
+
+
+def test_missing_event_id_still_processed():
+    deps = make_deps(stream_events=[idle_event()])
+    handle_message(
+        {"channel": "D1", "channel_type": "im", "text": "hi", "ts": "1.0"},
+        AckRecorder(), deps,
+    )
+    assert len(deps.anthropic.sessions.created) == 1
+
+
 def test_ack_always_called():
     deps = make_deps()
     ack = AckRecorder()

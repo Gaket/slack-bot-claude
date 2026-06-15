@@ -6,6 +6,59 @@ from .relay import relay_stream
 if TYPE_CHECKING:
     from .runtime import Deps
 
+# Anthropic archives a session after it has been idle long enough; sending to it
+# then fails with 400 "Cannot send events to archived session: ...". The thread
+# it was bound to is effectively dead, so we tell the user how to start fresh
+# instead of surfacing a raw stack-trace-looking error.
+ARCHIVED_SESSION_MESSAGE = (
+    "💤 This conversation has been archived, so I can't pick it back up. "
+    "Mention me in a new message to start a fresh one."
+)
+
+
+def _is_archived_session_error(exc: Exception) -> bool:
+    # Match on the API message rather than the SDK exception class: a plain test
+    # double works, and it survives SDK class renames.
+    return "archived session" in str(exc).lower()
+
+
+def _post_failure(deps: "Deps", channel: str, thread_ts: str | None, exc: Exception) -> None:
+    if _is_archived_session_error(exc):
+        deps.poster.post(channel, thread_ts, ARCHIVED_SESSION_MESSAGE)
+    else:
+        deps.poster.post_error(channel, thread_ts, exc)
+
+
+def _send_message(deps: "Deps", session_id: str, text: str) -> None:
+    deps.anthropic.beta.sessions.events.send(
+        session_id,
+        events=[{"type": "user.message", "content": [{"type": "text", "text": text}]}],
+    )
+
+
+def _drive(deps: "Deps", session_id: str, channel: str, reply_thread_ts: str | None) -> None:
+    """Relay the session to Slack, but only if no relay is already streaming it.
+
+    When a reply lands mid-run the gate returns False: the message was already
+    sent above, and the relay loop that's still open will surface its response —
+    so we must not open a second stream (that's what double-posted every reply).
+    """
+    if not deps.gate.enter(session_id):
+        return
+    try:
+        while True:
+            relay_stream(
+                deps.anthropic.beta.sessions.events.stream(session_id),
+                deps.poster,
+                channel,
+                reply_thread_ts,
+            )
+            if not deps.gate.finish(session_id):
+                return
+    except Exception:
+        deps.gate.release(session_id)
+        raise
+
 
 def start_conversation(
     deps: "Deps",
@@ -31,21 +84,11 @@ def start_conversation(
         logging.info(f"Session created: {session.id}")
         deps.store.set(session_key, session.id)
 
-        deps.anthropic.beta.sessions.events.send(
-            session.id,
-            events=[
-                {"type": "user.message", "content": [{"type": "text", "text": question}]}
-            ],
-        )
-        relay_stream(
-            deps.anthropic.beta.sessions.events.stream(session.id),
-            deps.poster,
-            channel,
-            reply_thread_ts,
-        )
+        _send_message(deps, session.id, question)
+        _drive(deps, session.id, channel, reply_thread_ts)
     except Exception as e:
         logging.error(f"Session error: {type(e).__name__}: {e}")
-        deps.poster.post_error(channel, reply_thread_ts, e)
+        _post_failure(deps, channel, reply_thread_ts, e)
 
 
 def continue_conversation(
@@ -56,17 +99,7 @@ def continue_conversation(
     reply_thread_ts: str | None,
 ) -> None:
     try:
-        deps.anthropic.beta.sessions.events.send(
-            session_id,
-            events=[
-                {"type": "user.message", "content": [{"type": "text", "text": text}]}
-            ],
-        )
-        relay_stream(
-            deps.anthropic.beta.sessions.events.stream(session_id),
-            deps.poster,
-            channel,
-            reply_thread_ts,
-        )
+        _send_message(deps, session_id, text)
+        _drive(deps, session_id, channel, reply_thread_ts)
     except Exception as e:
-        deps.poster.post_error(channel, reply_thread_ts, e)
+        _post_failure(deps, channel, reply_thread_ts, e)

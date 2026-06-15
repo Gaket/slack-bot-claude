@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.config import Config  # noqa: E402
 from app.dispatch import InlineDispatcher  # noqa: E402
+from app.session_gate import InMemorySessionGate  # noqa: E402
 from app.slack_out import SlackPoster  # noqa: E402
 
 
@@ -132,5 +133,6 @@ def make_deps(stream_events=(), config=None, slack_client=None):
         deduper=FakeDeduper(),
         poster=SlackPoster(client, IdentityConverter()),
         dispatcher=InlineDispatcher(),
+        gate=InMemorySessionGate(),
         slack_client=client,
     )

@@ -11,6 +11,7 @@ from slack_bolt.adapter.flask import SlackRequestHandler
 from .config import Config
 from .dispatch import Dispatcher, ThreadDispatcher
 from .handlers import register_handlers
+from .session_gate import InMemorySessionGate, SessionGate
 from .slack_out import SlackPoster
 from .store import EventDeduper, FirestoreEventDeduper, FirestoreSessionStore, SessionStore
 
@@ -23,6 +24,7 @@ class Deps:
     deduper: EventDeduper
     poster: SlackPoster
     dispatcher: Dispatcher
+    gate: SessionGate
     bolt_app: App
 
 
@@ -71,6 +73,7 @@ def _build_runtime() -> Runtime:
         deduper=FirestoreEventDeduper(db),
         poster=SlackPoster(bolt_app.client, SlackMarkdownConverter()),
         dispatcher=ThreadDispatcher(),
+        gate=InMemorySessionGate(),
         bolt_app=bolt_app,
     )
     register_handlers(bolt_app, deps)

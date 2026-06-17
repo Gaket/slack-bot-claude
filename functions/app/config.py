@@ -12,6 +12,7 @@ class Config:
     agent_id: str
     agent_version: int
     vault_ids: tuple[str, ...]
+    memory_store_id: str
     bot_id: str
 
     @classmethod
@@ -29,5 +30,6 @@ class Config:
             agent_id=env["AGENT_ID"],
             agent_version=int(env["AGENT_VERSION"]),
             vault_ids=tuple(vault_ids_raw.split(",")) if vault_ids_raw else (),
+            memory_store_id=env.get("MEMORY_STORE_ID", ""),
             bot_id=env.get("SLACK_BOT_ID", ""),
         )

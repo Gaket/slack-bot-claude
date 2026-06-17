@@ -80,6 +80,14 @@ def start_conversation(
         }
         if deps.config.vault_ids:
             session_params["vault_ids"] = list(deps.config.vault_ids)
+        if deps.config.memory_store_id:
+            session_params["resources"] = [
+                {
+                    "type": "memory_store",
+                    "memory_store_id": deps.config.memory_store_id,
+                    "access": "read_write",
+                }
+            ]
         session = deps.anthropic.beta.sessions.create(**session_params)
         logging.info(f"Session created: {session.id}")
         deps.store.set(session_key, session.id)

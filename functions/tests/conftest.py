@@ -117,6 +117,7 @@ def make_config(**overrides):
         agent_id="agent_test",
         agent_version=1,
         vault_ids=("vlt_test",),
+        memory_store_id="",
         bot_id="B_TEST",
     )
     base.update(overrides)

@@ -49,6 +49,15 @@ def test_vault_ids_single():
     assert Config.from_env({**FULL_ENV, "VAULT_IDS": "vlt_only"}).vault_ids == ("vlt_only",)
 
 
+def test_memory_store_id_absent_defaults_empty():
+    env = {k: v for k, v in FULL_ENV.items() if k != "MEMORY_STORE_ID"}
+    assert Config.from_env(env).memory_store_id == ""
+
+
+def test_memory_store_id_set():
+    assert Config.from_env({**FULL_ENV, "MEMORY_STORE_ID": "memstore_x"}).memory_store_id == "memstore_x"
+
+
 def test_bot_id_defaults_empty():
     env = {k: v for k, v in FULL_ENV.items() if k != "SLACK_BOT_ID"}
     assert Config.from_env(env).bot_id == ""

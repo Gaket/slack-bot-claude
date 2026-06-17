@@ -23,6 +23,29 @@ def test_start_omits_vault_ids_when_empty():
     assert "vault_ids" not in created
 
 
+def test_start_attaches_memory_store_when_set():
+    deps = make_deps(
+        stream_events=[idle_event()],
+        config=make_config(memory_store_id="memstore_test"),
+    )
+    start_conversation(deps, "C1", "ts1", "q", "ts1")
+    [created] = deps.anthropic.sessions.created
+    assert created["resources"] == [
+        {
+            "type": "memory_store",
+            "memory_store_id": "memstore_test",
+            "access": "read_write",
+        }
+    ]
+
+
+def test_start_omits_resources_when_no_memory_store():
+    deps = make_deps(stream_events=[idle_event()], config=make_config(memory_store_id=""))
+    start_conversation(deps, "C1", "ts1", "q", "ts1")
+    [created] = deps.anthropic.sessions.created
+    assert "resources" not in created
+
+
 def test_start_stores_mapping_and_sends_question():
     deps = make_deps(stream_events=[text_event("answer"), idle_event()])
     start_conversation(deps, "C1", "ts1", "the question", "ts1")

@@ -1,6 +1,10 @@
 from conftest import idle_event, make_config, make_deps, text_event
 
-from app.conversation import continue_conversation, start_conversation
+from app.conversation import (
+    continue_conversation,
+    handle_thread_mention,
+    start_conversation,
+)
 
 
 def test_start_creates_session_with_exact_params():
@@ -152,3 +156,89 @@ def test_start_archived_session_also_uses_friendly_message():
 
     [call] = deps.slack_client.calls
     assert "archived" in call["text"].lower()
+
+
+# --- Thread-mention backfill ---------------------------------------------------
+#
+# In channels the bot only acts when @-mentioned, and a mention should hand the
+# agent everything said in the thread since the bot was last active — not just the
+# mention text.
+
+
+def _payload_of(deps):
+    [(session_id, events)] = deps.anthropic.sessions.sent
+    return session_id, events[0]["content"][0]["text"]
+
+
+def test_mention_backfills_messages_since_watermark():
+    deps = make_deps(stream_events=[idle_event()])
+    deps.store.set("C1:50.0", "sesn_thread")
+    deps.store.set_watermark("C1:50.0", "100.0")
+    deps.slack_client.replies = [
+        {"ts": "100.0", "user": "U1", "text": "already seen (at watermark)"},
+        {"ts": "101.0", "user": "U1", "text": "msg one"},
+        {"ts": "102.0", "user": "U2", "text": "msg two"},
+        {"ts": "103.0", "user": "U1", "text": "<@U_BOT> please answer"},
+    ]
+    handle_thread_mention(
+        deps, "C1", "C1:50.0", "50.0", "103.0", "please answer", "sesn_thread"
+    )
+
+    session_id, payload = _payload_of(deps)
+    assert session_id == "sesn_thread"  # continues, no new session
+    assert deps.anthropic.sessions.created == []
+    assert "already seen" not in payload  # ts <= watermark excluded
+    assert "<@U1>: msg one" in payload
+    assert "<@U2>: msg two" in payload
+    assert "<@U1>: please answer" in payload  # mention rendered with clean question
+    assert "<@U_BOT>" not in payload  # raw bot tag never leaks into the prompt
+    assert deps.store.watermarks["C1:50.0"] == "103.0"  # advanced to the mention
+
+
+def test_mention_backfill_excludes_bot_and_subtype_messages():
+    deps = make_deps(stream_events=[idle_event()])
+    deps.slack_client.replies = [
+        {"ts": "10.0", "user": "U1", "text": "a human question"},
+        {"ts": "11.0", "bot_id": "B_TEST", "text": "✅ Done (3 steps)"},
+        {"ts": "12.0", "user": "U2", "text": "edited", "subtype": "message_changed"},
+        {"ts": "13.0", "user": "U1", "text": "<@U_BOT> go"},
+    ]
+    handle_thread_mention(deps, "C1", "C1:5.0", "5.0", "13.0", "go", None)
+
+    _, payload = _payload_of(deps)
+    assert "a human question" in payload
+    assert "Done (3 steps)" not in payload  # bot's own post dropped
+    assert "edited" not in payload  # subtype dropped
+    assert "<@U1>: go" in payload
+    # No watermark → whole thread fetched (oldest omitted).
+    [call] = deps.slack_client.replies_calls
+    assert "oldest" not in call
+
+
+def test_bare_mention_with_no_new_messages_greets_without_agent():
+    deps = make_deps()
+    deps.store.set("C1:5.0", "sesn_thread")
+    deps.store.set_watermark("C1:5.0", "20.0")
+    deps.slack_client.replies = [
+        {"ts": "20.0", "user": "U1", "text": "already seen"},
+        {"ts": "21.0", "user": "U1", "text": "<@U_BOT>"},  # bare mention, empty text
+    ]
+    handle_thread_mention(deps, "C1", "C1:5.0", "5.0", "21.0", "", "sesn_thread")
+
+    assert deps.anthropic.sessions.sent == []  # agent not bothered
+    [call] = deps.slack_client.calls
+    assert "how can i help" in call["text"].lower()
+    assert deps.store.watermarks["C1:5.0"] == "21.0"  # still advances
+
+
+def test_mention_fetch_failure_falls_back_to_question():
+    deps = make_deps(stream_events=[idle_event()])
+
+    def boom(**kwargs):
+        raise RuntimeError("api down")
+
+    deps.slack_client.conversations_replies = boom
+    handle_thread_mention(deps, "C1", "C1:5.0", "5.0", "9.0", "just this", None)
+
+    _, payload = _payload_of(deps)
+    assert payload == "just this"

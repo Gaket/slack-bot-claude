@@ -146,7 +146,9 @@ def test_reaction_failure_does_not_break_flow():
     assert "still works" in deps.slack_client.texts
 
 
-def test_thread_reply_continues_existing_session():
+def test_channel_thread_reply_without_mention_is_noop():
+    # New behavior: in channels the bot only acts when @-mentioned. A plain thread
+    # reply — even with a live session — must not trigger a response or a reaction.
     deps = make_deps(stream_events=[idle_event()])
     deps.store.set("C1:100.1", "sesn_thread")
     handle_message(
@@ -155,11 +157,41 @@ def test_thread_reply_continues_existing_session():
         deps,
     )
 
+    assert deps.anthropic.sessions.sent == []
+    assert deps.slack_client.reactions == []
+
+
+def test_mention_in_existing_thread_continues_session_and_advances_watermark():
+    deps = make_deps(stream_events=[idle_event()])
+    deps.store.set("C1:100.1", "sesn_thread")
+    handle_app_mention(
+        mention_event(text="<@U_BOT> more", ts="105.0", thread_ts="100.1"),
+        SayRecorder(),
+        AckRecorder(),
+        deps,
+    )
+
+    # No new session created; the existing one is reused.
+    assert deps.anthropic.sessions.created == []
     [(session_id, _)] = deps.anthropic.sessions.sent
     assert session_id == "sesn_thread"
-    assert deps.slack_client.reactions == [
-        {"channel": "C1", "timestamp": "101.0", "name": "eyes"}
-    ]
+    assert deps.store.watermarks["C1:100.1"] == "105.0"
+
+
+def test_remention_in_thread_does_not_create_second_session():
+    # Regression: handle_app_mention used to always start_conversation, overwriting
+    # the stored session id on every re-mention and discarding context.
+    deps = make_deps(stream_events=[idle_event()])
+    handle_app_mention(mention_event(), SayRecorder(), AckRecorder(), deps, event_id="E1")
+    assert len(deps.anthropic.sessions.created) == 1
+    handle_app_mention(
+        mention_event(text="<@U_BOT> again", ts="102.0", thread_ts="100.1"),
+        SayRecorder(),
+        AckRecorder(),
+        deps,
+        event_id="E2",
+    )
+    assert len(deps.anthropic.sessions.created) == 1
 
 
 def test_thread_reply_without_session_is_noop():
@@ -234,12 +266,12 @@ def test_duplicate_mention_delivery_same_event_id_starts_one_session():
     assert len(deps.anthropic.sessions.created) == 1
 
 
-def test_duplicate_thread_reply_same_event_id_sends_once():
+def test_duplicate_mention_in_existing_thread_sends_once():
     deps = make_deps(stream_events=[idle_event()])
     deps.store.set("C1:100.1", "sesn_thread")
-    ev = {"channel": "C1", "thread_ts": "100.1", "text": "follow up", "ts": "101.0"}
-    handle_message(dict(ev), AckRecorder(), deps, event_id="Ev3")
-    handle_message(dict(ev), AckRecorder(), deps, event_id="Ev3")
+    ev = mention_event(text="<@U_BOT> follow up", ts="101.0", thread_ts="100.1")
+    handle_app_mention(dict(ev), SayRecorder(), AckRecorder(), deps, event_id="Ev3")
+    handle_app_mention(dict(ev), SayRecorder(), AckRecorder(), deps, event_id="Ev3")
     assert len(deps.anthropic.sessions.sent) == 1
 
 

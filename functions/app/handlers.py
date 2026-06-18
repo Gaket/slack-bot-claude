@@ -1,7 +1,11 @@
 import logging
 from typing import TYPE_CHECKING
 
-from .conversation import continue_conversation, start_conversation
+from .conversation import (
+    continue_conversation,
+    handle_thread_mention,
+    start_conversation,
+)
 
 if TYPE_CHECKING:
     from slack_bolt import App
@@ -48,7 +52,13 @@ def handle_app_mention(
     question = event["text"].split(">", 1)[-1].strip()
     logging.info(f"Mention received, question: '{question}'")
 
-    if not question:
+    key = session_key(channel, thread_ts)
+    session_id = deps.store.get(key)
+
+    # A bare "@bot" in a brand-new thread has no context to pull in — just greet.
+    # (With prior thread messages or an existing session, fall through so the backfill
+    # carries the conversation even when the mention itself adds no text.)
+    if not question and session_id is None and thread_ts == event["ts"]:
         if not _already_handled(event_id, deps):
             say(text=GREETING, thread_ts=thread_ts)
         return
@@ -56,10 +66,11 @@ def handle_app_mention(
     deps.poster.add_reaction(channel, event["ts"], "eyes")
     if _already_handled(event_id, deps):
         return
-    # In a channel, the session is keyed by the thread and replies thread under the mention.
+    # The mention is the only trigger in channels; gather every thread message since the
+    # bot was last active and continue the thread's session (or start one).
     deps.dispatcher.dispatch(
-        lambda: start_conversation(
-            deps, channel, session_key(channel, thread_ts), question, thread_ts
+        lambda: handle_thread_mention(
+            deps, channel, key, thread_ts, event["ts"], question, session_id
         )
     )
 
@@ -76,9 +87,10 @@ def handle_message(
     text = event.get("text", "")
     thread_ts = event.get("thread_ts")
 
-    # Direct message (App Home "Messages" tab): one session per thread, mirroring
-    # channel behavior. A top-level DM starts a session and replies in its thread;
-    # replies inside a DM thread continue (or revive) that thread's session.
+    # Direct message (App Home "Messages" tab): one session per thread, and every
+    # message replies (no mention needed, unlike channels). A top-level DM starts a
+    # session and replies in its thread; replies inside a DM thread continue (or revive)
+    # that thread's session.
     if event.get("channel_type") == "im":
         ts = event["ts"]
         if thread_ts:
@@ -107,19 +119,9 @@ def handle_message(
             )
         return
 
-    # Channel/group: only continue an existing thread session. New conversations
-    # in channels start via app_mention, not here — so the dedup claim (a
-    # Firestore write) only happens once this is known to be the bot's thread,
-    # not for every message in every channel the bot is in.
-    if thread_ts:
-        session_id = deps.store.get(session_key(channel, thread_ts))
-        if session_id:
-            deps.poster.add_reaction(channel, event["ts"], "eyes")
-            if _already_handled(event_id, deps):
-                return
-            deps.dispatcher.dispatch(
-                lambda: continue_conversation(deps, session_id, channel, text, thread_ts)
-            )
+    # Channel/group: the bot only acts when explicitly @-mentioned (handled by
+    # handle_app_mention, which backfills everything said since it was last active).
+    # Plain thread replies are intentionally ignored here so the bot isn't chatty.
 
 
 def register_handlers(bolt_app: "App", deps: "Deps") -> None:

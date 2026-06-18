@@ -12,6 +12,7 @@ from .config import Config
 from .dispatch import Dispatcher, ThreadDispatcher
 from .handlers import register_handlers
 from .session_gate import InMemorySessionGate, SessionGate
+from .slack_in import SlackReader
 from .slack_out import SlackPoster
 from .store import EventDeduper, FirestoreEventDeduper, FirestoreSessionStore, SessionStore
 
@@ -23,6 +24,7 @@ class Deps:
     store: SessionStore
     deduper: EventDeduper
     poster: SlackPoster
+    reader: SlackReader
     dispatcher: Dispatcher
     gate: SessionGate
     bolt_app: App
@@ -72,6 +74,7 @@ def _build_runtime() -> Runtime:
         store=FirestoreSessionStore(db),
         deduper=FirestoreEventDeduper(db),
         poster=SlackPoster(bolt_app.client, SlackMarkdownConverter()),
+        reader=SlackReader(bolt_app.client),
         dispatcher=ThreadDispatcher(),
         gate=InMemorySessionGate(),
         bolt_app=bolt_app,

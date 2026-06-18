@@ -7,18 +7,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.config import Config  # noqa: E402
 from app.dispatch import InlineDispatcher  # noqa: E402
 from app.session_gate import InMemorySessionGate  # noqa: E402
+from app.slack_in import SlackReader  # noqa: E402
 from app.slack_out import SlackPoster  # noqa: E402
 
 
 class FakeStore:
     def __init__(self):
         self.data = {}
+        self.watermarks = {}
 
     def get(self, key):
         return self.data.get(key)
 
     def set(self, key, session_id):
         self.data[key] = session_id
+
+    def get_watermark(self, key):
+        return self.watermarks.get(key)
+
+    def set_watermark(self, key, ts):
+        self.watermarks[key] = ts
 
 
 class FakeDeduper:
@@ -37,6 +45,8 @@ class FakeSlackClient:
         self.calls = []
         self.reactions = []
         self.updates = []
+        self.replies = []  # messages conversations_replies returns
+        self.replies_calls = []  # kwargs each conversations_replies received
 
     def chat_postMessage(self, **kwargs):
         self.calls.append(kwargs)
@@ -47,6 +57,10 @@ class FakeSlackClient:
 
     def reactions_add(self, **kwargs):
         self.reactions.append(kwargs)
+
+    def conversations_replies(self, **kwargs):
+        self.replies_calls.append(kwargs)
+        return {"messages": self.replies}
 
     @property
     def texts(self):
@@ -133,6 +147,7 @@ def make_deps(stream_events=(), config=None, slack_client=None):
         store=FakeStore(),
         deduper=FakeDeduper(),
         poster=SlackPoster(client, IdentityConverter()),
+        reader=SlackReader(client),
         dispatcher=InlineDispatcher(),
         gate=InMemorySessionGate(),
         slack_client=client,
